@@ -1,425 +1,142 @@
 # Adding New Sensitive Data Types - Extension Guide
 
-This guide demonstrates how to extend the Data Masking Extension to support new sensitive data types like bank accounts, social security numbers, credit cards, etc.
+This guide demonstrates how to extend the Data Masking Extension to support new sensitive data types like bank accounts, social security numbers, or credit cards.
 
 ## Overview
 
-The Data Masking Extension is designed with extensibility in mind, following SOLID principles. Adding new sensitive data types can be accomplished through multiple approaches, depending on your requirements.
+The Data Masking Extension is designed with extensibility in mind. It uses a registry pattern where the `DataMaskingService` acts as a registry for different `MaskingStrategy` implementations. To add a new masking rule, you simply need to create your own `MaskingStrategy` and register it with the service.
 
-## Approach 1: Configuration-Only Extension (Recommended for Simple Cases)
+This is typically done by creating a separate EDC extension that depends on the `data-masking` extension.
 
-### 🎯 **Zero Code Changes Required**
+## Step 1: Create a New `MaskingStrategy` Implementation
 
-For basic masking needs, simply add the new field names to your configuration:
+First, create a new Java class that implements the `org.eclipse.edc.connector.datamasking.spi.MaskingStrategy` interface. This interface has two methods:
 
-```properties
-# config.properties
-edc.data.masking.enabled=true
-edc.data.masking.fields=name,phone,email,bankAccount,accountNumber,iban,ssn,creditCard
-```
+- `canMask(String fieldName)`: This method determines if the strategy should be applied to a given field. You can use any logic here, such as checking for specific field names or patterns.
+- `mask(String value)`: This method contains the logic for masking the value of the field.
 
-### How It Works
+### Example: `CreditCardMaskingStrategy`
 
-The existing system will automatically:
-
-1. Detect the configured field names (case-insensitive)
-2. Apply the default masking strategy (preserve first character + asterisks)
-3. Handle multiple field name variations
-
-### Example Results
-
-```json
-// Input
-{
-  "bankAccount": "1234567890123456",
-  "ssn": "123-45-6789",
-  "creditCard": "4111111111111111"
-}
-
-// Output (default masking)
-{
-  "bankAccount": "1***************",
-  "ssn": "1**********",
-  "creditCard": "4***************"
-}
-```
-
-### Pros & Cons
-
-✅ **Pros:**
-
-- No code changes required
-- Zero development time
-- Immediate deployment
-- No testing overhead
-
-❌ **Cons:**
-
-- Basic masking only (first character + asterisks)
-- No specialized masking patterns
-- Limited customization
-
----
-
-## Approach 2: Enhanced Implementation (Recommended for Sophisticated Masking)
-
-### 🎯 **Minimal Code Changes for Custom Masking Logic**
-
-For specialized masking patterns (e.g., preserve last 4 digits of bank accounts), extend the implementation.
-
-### Step 1: Extend the SPI Interface
+Let's create a strategy to mask credit card numbers, leaving only the last four digits visible.
 
 ```java
-// File: DataMaskingService.java
-// Add new method to the interface
+package com.example.edc.extension.masking;
 
-/**
- * Masks a bank account number by keeping only the last 4 digits visible.
- * Example: "1234567890123456" -> "************3456"
- *
- * @param bankAccount the bank account number to mask
- * @return the masked bank account number
- */
-String maskBankAccount(String bankAccount);
+import org.eclipse.edc.connector.datamasking.spi.MaskingStrategy;
 
-/**
- * Masks a social security number by keeping only the last 4 digits visible.
- * Example: "123-45-6789" -> "***-**-6789"
- *
- * @param ssn the social security number to mask
- * @return the masked SSN
- */
-String maskSocialSecurityNumber(String ssn);
+public class CreditCardMaskingStrategy implements MaskingStrategy {
 
-/**
- * Masks a credit card number by keeping only the last 4 digits visible.
- * Example: "4111-1111-1111-1111" -> "****-****-****-1111"
- *
- * @param creditCard the credit card number to mask
- * @return the masked credit card number
- */
-String maskCreditCard(String creditCard);
-```
-
-### Step 2: Implement in DataMaskingServiceImpl
-
-```java
-// File: DataMaskingServiceImpl.java
-// Add implementation methods
-
-@Override
-public String maskBankAccount(String bankAccount) {
-    if (bankAccount == null || bankAccount.trim().isEmpty()) {
-        return bankAccount;
-    }
-
-    String trimmed = bankAccount.trim();
-    String digitsOnly = trimmed.replaceAll("[^0-9]", "");
-
-    if (digitsOnly.length() <= 4) {
-        return MASK_CHARACTER.repeat(trimmed.length());
-    }
-
-    String lastFour = digitsOnly.substring(digitsOnly.length() - 4);
-    StringBuilder masked = new StringBuilder(trimmed);
-
-    // Replace digits with asterisks, keeping last 4
-    int digitsFound = 0;
-    for (int i = trimmed.length() - 1; i >= 0; i--) {
-        if (Character.isDigit(trimmed.charAt(i))) {
-            digitsFound++;
-            if (digitsFound > 4) {
-                masked.setCharAt(i, MASK_CHARACTER.charAt(0));
-            }
-        }
-    }
-
-    return masked.toString();
-}
-
-@Override
-public String maskSocialSecurityNumber(String ssn) {
-    if (ssn == null || ssn.trim().isEmpty()) {
-        return ssn;
-    }
-
-    String trimmed = ssn.trim();
-    String digitsOnly = trimmed.replaceAll("[^0-9]", "");
-
-    if (digitsOnly.length() < 4) {
-        return MASK_CHARACTER.repeat(trimmed.length());
-    }
-
-    StringBuilder masked = new StringBuilder(trimmed);
-    int digitsFound = 0;
-
-    // Keep last 4 digits, mask the rest
-    for (int i = trimmed.length() - 1; i >= 0; i--) {
-        if (Character.isDigit(trimmed.charAt(i))) {
-            digitsFound++;
-            if (digitsFound > 4) {
-                masked.setCharAt(i, MASK_CHARACTER.charAt(0));
-            }
-        }
-    }
-
-    return masked.toString();
-}
-
-@Override
-public String maskCreditCard(String creditCard) {
-    if (creditCard == null || creditCard.trim().isEmpty()) {
-        return creditCard;
-    }
-
-    String trimmed = creditCard.trim();
-    String digitsOnly = trimmed.replaceAll("[^0-9]", "");
-
-    if (digitsOnly.length() < 4) {
-        return MASK_CHARACTER.repeat(trimmed.length());
-    }
-
-    StringBuilder masked = new StringBuilder(trimmed);
-    int digitsFound = 0;
-
-    // Keep last 4 digits, mask the rest
-    for (int i = trimmed.length() - 1; i >= 0; i--) {
-        if (Character.isDigit(trimmed.charAt(i))) {
-            digitsFound++;
-            if (digitsFound > 4) {
-                masked.setCharAt(i, MASK_CHARACTER.charAt(0));
-            }
-        }
-    }
-
-    return masked.toString();
-}
-```
-
-### Step 3: Update Field Detection Logic
-
-```java
-// File: DataMaskingServiceImpl.java
-// Modify the maskFieldValue() method
-
-private String maskFieldValue(String fieldName, String value) {
-    String lowerFieldName = fieldName.toLowerCase();
-
-    if ("name".equals(lowerFieldName)) {
-        return maskName(value);
-    } else if ("phone".equals(lowerFieldName) || "phonenumber".equals(lowerFieldName) ||
-            "phone_number".equals(lowerFieldName)) {
-        return maskPhoneNumber(value);
-    } else if ("email".equals(lowerFieldName) || "emailaddress".equals(lowerFieldName) ||
-            "email_address".equals(lowerFieldName)) {
-        return maskEmail(value);
-    } else if ("bankaccount".equals(lowerFieldName) || "accountnumber".equals(lowerFieldName) ||
-            "account_number".equals(lowerFieldName) || "iban".equals(lowerFieldName)) {
-        return maskBankAccount(value);
-    } else if ("ssn".equals(lowerFieldName) || "socialsecuritynumber".equals(lowerFieldName) ||
-            "social_security_number".equals(lowerFieldName)) {
-        return maskSocialSecurityNumber(value);
-    } else if ("creditcard".equals(lowerFieldName) || "credit_card".equals(lowerFieldName) ||
-            "cardnumber".equals(lowerFieldName) || "card_number".equals(lowerFieldName)) {
-        return maskCreditCard(value);
-    }
-
-    // Default masking strategy - keep first character
-    if (value.length() <= 1) {
-        return value;
-    }
-    return value.charAt(0) + MASK_CHARACTER.repeat(value.length() - 1);
-}
-```
-
-### Step 4: Add Comprehensive Tests
-
-```java
-// File: DataMaskingServiceImplTest.java
-// Add test methods for new functionality
-
-@Test
-void shouldMaskBankAccount_standardFormat() {
-    // given
-    String bankAccount = "1234567890123456";
-
-    // when
-    String maskedAccount = dataMaskingService.maskBankAccount(bankAccount);
-
-    // then
-    assertThat(maskedAccount).isEqualTo("************3456");
-}
-
-@Test
-void shouldMaskBankAccount_withDashes() {
-    // given
-    String bankAccount = "1234-5678-9012-3456";
-
-    // when
-    String maskedAccount = dataMaskingService.maskBankAccount(bankAccount);
-
-    // then
-    assertThat(maskedAccount).isEqualTo("****-****-****-3456");
-}
-
-@Test
-void shouldMaskSSN_standardFormat() {
-    // given
-    String ssn = "123-45-6789";
-
-    // when
-    String maskedSSN = dataMaskingService.maskSocialSecurityNumber(ssn);
-
-    // then
-    assertThat(maskedSSN).isEqualTo("***-**-6789");
-}
-
-@Test
-void shouldMaskCreditCard_visaFormat() {
-    // given
-    String creditCard = "4111-1111-1111-1111";
-
-    // when
-    String maskedCard = dataMaskingService.maskCreditCard(creditCard);
-
-    // then
-    assertThat(maskedCard).isEqualTo("****-****-****-1111");
-}
-
-@Test
-void shouldMaskNewFieldsInJSON() {
-    // given
-    String inputJson = """
-        {
-            "name": "John Doe",
-            "bankAccount": "1234567890123456",
-            "ssn": "123-45-6789",
-            "creditCard": "4111-1111-1111-1111"
-        }
-        """;
-
-    // when
-    String maskedJson = dataMaskingService.maskJsonData(inputJson);
-
-    // then
-    assertThat(maskedJson).contains("\"name\":\"J*** D**\"");
-    assertThat(maskedJson).contains("\"bankAccount\":\"************3456\"");
-    assertThat(maskedJson).contains("\"ssn\":\"***-**-6789\"");
-    assertThat(maskedJson).contains("\"creditCard\":\"****-****-****-1111\"");
-}
-```
-
-### Step 5: Update Configuration
-
-```properties
-# config.properties
-edc.data.masking.enabled=true
-edc.data.masking.fields=name,phone,email,bankAccount,ssn,creditCard
-```
-
-### Example Results
-
-```json
-// Input
-{
-  "customer": {
-    "name": "John Doe",
-    "email": "john@example.com",
-    "bankAccount": "1234567890123456",
-    "ssn": "123-45-6789",
-    "creditCard": "4111-1111-1111-1111"
-  }
-}
-
-// Output (enhanced masking)
-{
-  "customer": {
-    "name": "J*** D**",
-    "email": "j***@example.com",
-    "bankAccount": "************3456",
-    "ssn": "***-**-6789",
-    "creditCard": "****-****-****-1111"
-  }
-}
-```
-
----
-
-## Approach 3: Plugin Architecture (Advanced)
-
-### 🎯 **For Multiple Custom Masking Providers**
-
-Create a plugin-based system for complex scenarios:
-
-```java
-// Create a masking provider interface
-public interface MaskingProvider {
-    boolean canMask(String fieldName);
-    String mask(String value);
-    int getPriority(); // For ordering providers
-}
-
-// Implement specific providers
-public class FinancialDataMaskingProvider implements MaskingProvider {
     @Override
     public boolean canMask(String fieldName) {
-        return fieldName.toLowerCase().matches("(bank|account|credit|card|iban).*");
+        String lowerCaseFieldName = fieldName.toLowerCase();
+        return lowerCaseFieldName.contains("creditcard") || lowerCaseFieldName.contains("cc_number");
     }
 
     @Override
     public String mask(String value) {
-        // Complex financial data masking logic
-        return maskFinancialData(value);
-    }
-
-    @Override
-    public int getPriority() {
-        return 100; // High priority for financial data
+        if (value == null || value.length() <= 4) {
+            return value;
+        }
+        int length = value.length();
+        StringBuilder maskedValue = new StringBuilder();
+        for (int i = 0; i < length - 4; i++) {
+            char c = value.charAt(i);
+            if (Character.isDigit(c)) {
+                maskedValue.append('*');
+            } else {
+                maskedValue.append(c);
+            }
+        }
+        maskedValue.append(value.substring(length - 4));
+        return maskedValue.toString();
     }
 }
 ```
 
----
+## Step 2: Create a New Extension to Register the Strategy
 
-## Impact Analysis
+Create a new EDC `ServiceExtension` that will register your custom strategy. This extension will get the `DataMaskingService` from the context and use its `register` method.
 
-| Approach    | Files Modified | Test Files   | Config Changes | Complexity | Risk     |
-| ----------- | -------------- | ------------ | -------------- | ---------- | -------- |
-| Config-only | 0              | 1 (optional) | 1              | Very Low   | Very Low |
-| Enhanced    | 2              | 1            | 1              | Low        | Low      |
-| Plugin      | 3+             | 2+           | 1              | Medium     | Medium   |
+```java
+package com.example.edc.extension.masking;
 
-## Recommendations
+import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
+import org.eclipse.edc.runtime.metamodel.annotation.Inject;
+import org.eclipse.edc.spi.system.ServiceExtension;
+import org.eclipse.edc.spi.system.ServiceExtensionContext;
 
-### For Simple Cases (basic masking)
+public class CustomMaskingExtension implements ServiceExtension {
 
-- **Use Approach 1**: Configuration-only extension
-- **Time to implement**: 5 minutes
-- **Suitable for**: Non-sensitive patterns, quick deployment
+    @Inject
+    private DataMaskingService dataMaskingService;
 
-### For Production Use (sophisticated masking)
+    @Override
+    public void initialize(ServiceExtensionContext context) {
+        dataMaskingService.register(new CreditCardMaskingStrategy());
+    }
+}
+```
 
-- **Use Approach 2**: Enhanced implementation
-- **Time to implement**: 2-4 hours
-- **Suitable for**: Financial data, regulatory compliance, production systems
+## Step 3: Register the Custom Extension as a Service
 
-### For Complex Scenarios (multiple providers)
+For the EDC runtime to discover your new `CustomMaskingExtension`, you must create a service provider configuration file.
 
-- **Use Approach 3**: Plugin architecture
-- **Time to implement**: 1-2 days
-- **Suitable for**: Multiple masking providers, enterprise systems
+1.  In your custom extension's resources directory, create the following folder structure: `src/main/resources/META-INF/services`.
+2.  Inside the `services` directory, create a file named `org.eclipse.edc.spi.system.ServiceExtension`.
+3.  Add the fully qualified name of your new extension class to this file:
 
-## Testing Strategy
+    ```
+    com.example.edc.extension.masking.CustomMaskingExtension
+    ```
 
-1. **Unit Tests**: Test each new masking method individually
-2. **Integration Tests**: Test JSON processing with new fields
-3. **Configuration Tests**: Verify field detection works correctly
-4. **Edge Case Tests**: Handle null values, empty strings, malformed data
+This file tells the Java ServiceLoader that your class is an available `ServiceExtension`, allowing the EDC runtime to load and initialize it.
 
-## Migration Path
+## Step 4: Include Your New Extension in the Runtime
 
-1. Start with **Approach 1** for immediate needs
-2. Upgrade to **Approach 2** when sophisticated masking is required
-3. Move to **Approach 3** for enterprise-grade extensibility
+Finally, add your new extension module as a dependency to your EDC runtime launcher. This will ensure that your custom extension is loaded and the new masking strategy is registered with the `DataMaskingService`.
 
-The design's adherence to SOLID principles ensures that migration between approaches is seamless and non-breaking.
+```kotlin
+// In your launcher's build.gradle.kts
+dependencies {
+    // ... other dependencies
+    implementation(project(":extensions:common:data-masking"))
+    implementation(project(":extensions:custom:custom-masking-extension")) // Your new extension
+}
+```
+
+## Step 5: Configure the New Field (Optional)
+
+If you want to mask a field that is not covered by the default field names, add it to your `config.properties` file.
+
+```properties
+# config.properties
+edc.data.masking.fields=name,phone,email,creditCard,cc_number
+```
+
+## Step 6: Test Your New Strategy (Recommended)
+
+It is highly recommended to write unit tests for your new `MaskingStrategy` to ensure it behaves as expected.
+
+### Example: `CreditCardMaskingStrategyTest.java`
+
+```java
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CreditCardMaskingStrategyTest {
+
+    private final CreditCardMaskingStrategy strategy = new CreditCardMaskingStrategy();
+
+    @Test
+    void shouldMaskCreditCardNumber() {
+        assertThat(strategy.mask("4111-1111-1111-1111")).isEqualTo("****-****-****-1111");
+    }
+
+    @Test
+    void shouldNotMaskShortValues() {
+        assertThat(strategy.mask("1234")).isEqualTo("1234");
+    }
+}
+```
+
+That's it! Your new masking rule is now fully integrated into the data masking extension and will be automatically applied during data transfers.

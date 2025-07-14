@@ -24,6 +24,13 @@ import org.eclipse.edc.runtime.metamodel.annotation.ExtensionPoint;
 public interface DataMaskingService {
 
     /**
+     * Registers a new masking strategy. This allows other extensions to add custom masking rules.
+     *
+     * @param strategy the masking strategy to register
+     */
+    void register(MaskingStrategy strategy);
+
+    /**
      * Masks a name by keeping initials visible and masking the rest.
      * Example: "Jonathan Smith" -> "J******** S****"
      *

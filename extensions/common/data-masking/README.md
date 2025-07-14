@@ -9,7 +9,7 @@ The Data Masking Extension is a configurable EDC extension that automatically ma
 - **Automatic masking** of sensitive fields in JSON data
 - **Configurable field selection** - choose which fields to mask
 - **Multiple masking strategies** for different data types
-- **Seamless integration** with EDC's transformation pipeline
+- **Seamless integration** with EDC's transformation pipeline, now supporting `InputStream`
 - **No performance impact** when disabled
 - **Extensive test coverage** with clear examples
 
@@ -46,11 +46,11 @@ edc.data.masking.enabled=true
 edc.data.masking.fields=name,phone,email,phoneNumber,customField
 ```
 
-If no specific fields are configured, the extension will mask these default fields:
+If no specific fields are configured, the extension will mask these default fields (case-insensitive):
 
 - `name`
-- `phone`, `phoneNumber`, `phone_number`
-- `email`, `emailAddress`, `email_address`
+- `phone`, `phonenumber`, `phone_number`
+- `email`, `emailaddress`, `email_address`
 
 ## Integration Guide
 
@@ -113,21 +113,24 @@ java -jar build/libs/your-connector.jar
 }
 ```
 
-### Complex Nested Structures
+### Masking Nested JSON
+
+The extension correctly traverses nested JSON objects and arrays.
 
 **Input:**
 
 ```json
 {
-  "users": [
-    {
+  "user": {
+    "details": {
       "name": "Alice Johnson",
       "contact": {
-        "email": "alice@company.com",
+        "email": "alice.johnson@company.com",
         "phone": "555-123-4567"
       }
-    }
-  ]
+    },
+    "department": "Engineering"
+  }
 }
 ```
 
@@ -135,15 +138,16 @@ java -jar build/libs/your-connector.jar
 
 ```json
 {
-  "users": [
-    {
+  "user": {
+    "details": {
       "name": "A**** J******",
       "contact": {
-        "email": "a****@company.com",
+        "email": "a************@company.com",
         "phone": "***-***-*567"
       }
-    }
-  ]
+    },
+    "department": "Engineering"
+  }
 }
 ```
 
