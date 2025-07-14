@@ -21,13 +21,18 @@ import org.eclipse.edc.transform.spi.TypeTransformer;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 /**
- * Transformer that applies data masking to JSON strings during data exchange.
- * This transformer integrates with EDC's transformation pipeline to
- * automatically
- * mask sensitive data fields based on configuration.
+ * A type transformer that applies data masking to string-based data.
+ * It intercepts data of type String and applies masking rules before
+ * passing it on.
  */
-public class DataMaskingTransformer implements TypeTransformer<String, String> {
+public class DataMaskingTransformer implements TypeTransformer<InputStream, InputStream> {
 
     private final DataMaskingService dataMaskingService;
     private final Monitor monitor;
@@ -38,54 +43,36 @@ public class DataMaskingTransformer implements TypeTransformer<String, String> {
     }
 
     @Override
-    public Class<String> getInputType() {
-        return String.class;
+    public Class<InputStream> getInputType() {
+        return InputStream.class;
     }
 
     @Override
-    public Class<String> getOutputType() {
-        return String.class;
+    public Class<InputStream> getOutputType() {
+        return InputStream.class;
     }
 
     @Override
-    public @Nullable String transform(@NotNull String input, @NotNull TransformerContext context) {
+    public @Nullable InputStream transform(@NotNull InputStream data, @NotNull TransformerContext context) {
         try {
-            // Check if this looks like JSON data that should be masked
-            if (shouldMaskData(input)) {
-                monitor.debug("Applying data masking to JSON data");
-                return dataMaskingService.maskJsonData(input);
-            }
-            return input;
+            // Read the input stream into a string
+            var baos = new ByteArrayOutputStream();
+            data.transferTo(baos);
+            var jsonData = baos.toString(StandardCharsets.UTF_8);
+
+            // Mask the data
+            var maskedData = dataMaskingService.maskJsonData(jsonData);
+
+            // Return the masked data as a new input stream
+            return new ByteArrayInputStream(maskedData.getBytes(StandardCharsets.UTF_8));
+        } catch (IOException e) {
+            monitor.severe("Failed to read input stream for data masking", e);
+            context.reportProblem("Failed to read input stream: " + e.getMessage());
+            return null; // Returning null indicates a transformation failure
         } catch (Exception e) {
-            monitor.warning("Error applying data masking, returning original data", e);
+            monitor.severe("Failed to apply data masking transformation", e);
             context.reportProblem("Data masking failed: " + e.getMessage());
-            return input;
+            return null; // Returning null indicates a transformation failure
         }
-    }
-
-    /**
-     * Determines if the input data should be masked.
-     * Currently checks if the input appears to be JSON and contains sensitive
-     * fields.
-     */
-    private boolean shouldMaskData(String input) {
-        if (input == null || input.trim().isEmpty()) {
-            return false;
-        }
-
-        String trimmed = input.trim();
-        if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
-            return false; // Not JSON
-        }
-
-        // Check if it contains any of the sensitive field names
-        String lowerInput = input.toLowerCase();
-        return lowerInput.contains("\"name\"") ||
-                lowerInput.contains("\"phone\"") ||
-                lowerInput.contains("\"email\"") ||
-                lowerInput.contains("\"phonenumber\"") ||
-                lowerInput.contains("\"phone_number\"") ||
-                lowerInput.contains("\"emailaddress\"") ||
-                lowerInput.contains("\"email_address\"");
     }
 }

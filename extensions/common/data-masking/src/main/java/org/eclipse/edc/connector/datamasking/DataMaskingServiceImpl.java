@@ -18,215 +18,112 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
+import org.eclipse.edc.connector.datamasking.spi.MaskingStrategy;
 import org.eclipse.edc.spi.monitor.Monitor;
 
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 
 /**
- * Default implementation of DataMaskingService that provides configurable
- * masking strategies for sensitive data fields.
+ * Service that masks sensitive data fields in JSON objects based on configured rules.
  */
 public class DataMaskingServiceImpl implements DataMaskingService {
 
-    private static final String MASK_CHARACTER = "*";
-    private static final Pattern EMAIL_PATTERN = Pattern.compile("^(.+)@(.+)$");
-    private static final Pattern PHONE_PATTERN = Pattern.compile("^(.+)([0-9]{3})$");
+    private static final Set<String> DEFAULT_FIELDS_TO_MASK = new HashSet<>(Arrays.asList(
+            "name", "phone", "phonenumber", "phone_number", "email", "emailaddress", "email_address"
+    ));
 
-    private final ObjectMapper objectMapper;
     private final Monitor monitor;
-    private final Set<String> enabledFields;
-    private final boolean globallyEnabled;
+    private final boolean maskingEnabled;
+    private final Set<String> fieldsToMask;
+    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final List<MaskingStrategy> maskingStrategies;
 
-    public DataMaskingServiceImpl(Monitor monitor, boolean globallyEnabled, String... enabledFields) {
+    public DataMaskingServiceImpl(Monitor monitor, boolean maskingEnabled, String[] fieldsToMask, List<MaskingStrategy> maskingStrategies) {
         this.monitor = monitor;
-        this.objectMapper = new ObjectMapper();
-        this.globallyEnabled = globallyEnabled;
-        this.enabledFields = Arrays.stream(enabledFields)
-                .map(String::toLowerCase)
-                .collect(Collectors.toSet());
+        this.maskingEnabled = maskingEnabled;
+        this.maskingStrategies = maskingStrategies;
+        var fieldsToMaskSet = new HashSet<String>();
+        if (fieldsToMask != null && fieldsToMask.length > 0) {
+            for (String field : fieldsToMask) {
+                fieldsToMaskSet.add(field.trim().toLowerCase());
+            }
+            this.fieldsToMask = fieldsToMaskSet;
+        } else {
+            this.fieldsToMask = DEFAULT_FIELDS_TO_MASK;
+        }
     }
 
     @Override
     public String maskName(String name) {
-        if (name == null || name.trim().isEmpty()) {
-            return name;
-        }
-
-        String trimmedName = name.trim();
-        String[] parts = trimmedName.split("\\s+");
-        StringBuilder maskedName = new StringBuilder();
-
-        for (int i = 0; i < parts.length; i++) {
-            if (i > 0) {
-                maskedName.append(" ");
-            }
-
-            String part = parts[i];
-            if (part.length() == 1) {
-                maskedName.append(part);
-            } else {
-                maskedName.append(part.charAt(0));
-                maskedName.append(MASK_CHARACTER.repeat(part.length() - 1));
-            }
-        }
-
-        return maskedName.toString();
+        return findMaskingStrategy("name").map(s -> s.mask(name)).orElse(name);
     }
 
     @Override
     public String maskPhoneNumber(String phoneNumber) {
-        if (phoneNumber == null || phoneNumber.trim().isEmpty()) {
-            return phoneNumber;
-        }
-
-        String trimmedPhone = phoneNumber.trim();
-
-        // Extract digits from the phone number
-        String digitsOnly = trimmedPhone.replaceAll("[^0-9]", "");
-
-        if (digitsOnly.length() < 3) {
-            // If less than 3 digits, mask everything
-            return MASK_CHARACTER.repeat(trimmedPhone.length());
-        }
-
-        // Keep last 3 digits
-        String lastThreeDigits = digitsOnly.substring(digitsOnly.length() - 3);
-
-        // Find where the last 3 digits appear in the original string
-        int lastDigitIndex = trimmedPhone.length() - 1;
-        int digitsFound = 0;
-
-        StringBuilder masked = new StringBuilder(trimmedPhone);
-
-        // Work backwards to find and preserve the last 3 digits
-        for (int i = lastDigitIndex; i >= 0 && digitsFound < 3; i--) {
-            if (Character.isDigit(trimmedPhone.charAt(i))) {
-                digitsFound++;
-            }
-        }
-
-        // Mask all digits except the last 3
-        digitsFound = 0;
-        for (int i = lastDigitIndex; i >= 0; i--) {
-            if (Character.isDigit(trimmedPhone.charAt(i))) {
-                digitsFound++;
-                if (digitsFound > 3) {
-                    masked.setCharAt(i, MASK_CHARACTER.charAt(0));
-                }
-            }
-        }
-
-        return masked.toString();
+        return findMaskingStrategy("phone").map(s -> s.mask(phoneNumber)).orElse(phoneNumber);
     }
 
     @Override
     public String maskEmail(String email) {
-        if (email == null || email.trim().isEmpty()) {
-            return email;
-        }
-
-        String trimmedEmail = email.trim();
-        var matcher = EMAIL_PATTERN.matcher(trimmedEmail);
-
-        if (!matcher.matches()) {
-            // If it's not a valid email format, mask everything except first character
-            if (trimmedEmail.length() <= 1) {
-                return trimmedEmail;
-            }
-            return trimmedEmail.charAt(0) + MASK_CHARACTER.repeat(trimmedEmail.length() - 1);
-        }
-
-        String localPart = matcher.group(1);
-        String domainPart = matcher.group(2);
-
-        if (localPart.length() <= 1) {
-            return trimmedEmail; // Don't mask if local part is too short
-        }
-
-        String maskedLocalPart = localPart.charAt(0) + MASK_CHARACTER.repeat(localPart.length() - 1);
-        return maskedLocalPart + "@" + domainPart;
+        return findMaskingStrategy("email").map(s -> s.mask(email)).orElse(email);
     }
 
     @Override
     public String maskJsonData(String jsonObject) {
-        if (jsonObject == null || jsonObject.trim().isEmpty()) {
+        if (!maskingEnabled || jsonObject == null || jsonObject.trim().isEmpty()) {
             return jsonObject;
         }
 
         try {
             JsonNode rootNode = objectMapper.readTree(jsonObject);
             if (rootNode.isObject()) {
-                ObjectNode objectNode = (ObjectNode) rootNode;
-                maskObjectNode(objectNode);
+                traverseAndMask((ObjectNode) rootNode);
+                return objectMapper.writeValueAsString(rootNode);
             }
-            return objectMapper.writeValueAsString(rootNode);
-        } catch (Exception e) {
-            monitor.warning("Failed to parse JSON for masking, returning original data", e);
+            // If root is not an object (e.g., an array), return original data as no masking is applied.
             return jsonObject;
+        } catch (Exception e) {
+            monitor.severe("Data masking failed: " + e.getMessage(), e);
+            return jsonObject; // Return original data on failure
         }
     }
 
     @Override
     public boolean isMaskingEnabledForField(String fieldName) {
-        if (!globallyEnabled) {
-            return false;
-        }
-
-        if (enabledFields.isEmpty()) {
-            // If no specific fields configured, enable for common sensitive fields
-            return "name".equalsIgnoreCase(fieldName) ||
-                    "phone".equalsIgnoreCase(fieldName) ||
-                    "phoneNumber".equalsIgnoreCase(fieldName) ||
-                    "phone_number".equalsIgnoreCase(fieldName) ||
-                    "email".equalsIgnoreCase(fieldName) ||
-                    "emailAddress".equalsIgnoreCase(fieldName) ||
-                    "email_address".equalsIgnoreCase(fieldName);
-        }
-
-        return enabledFields.contains(fieldName.toLowerCase());
+        return maskingEnabled && fieldsToMask.contains(fieldName.toLowerCase());
     }
 
-    private void maskObjectNode(ObjectNode objectNode) {
-        objectNode.fields().forEachRemaining(entry -> {
-            String fieldName = entry.getKey();
-            JsonNode fieldValue = entry.getValue();
+    private void traverseAndMask(ObjectNode node) {
+        node.fieldNames().forEachRemaining(fieldName -> {
+            JsonNode childNode = node.get(fieldName);
+            if (isMaskingEnabledForField(fieldName)) {
+                findMaskingStrategy(fieldName).ifPresent(strategy -> {
+                    if (childNode.isTextual()) {
+                        String maskedValue = strategy.mask(childNode.asText());
+                        node.put(fieldName, maskedValue);
+                    }
+                });
+            }
 
-            if (fieldValue.isTextual() && isMaskingEnabledForField(fieldName)) {
-                String originalValue = fieldValue.asText();
-                String maskedValue = maskField(fieldName, originalValue);
-                objectNode.put(fieldName, maskedValue);
-            } else if (fieldValue.isObject()) {
-                maskObjectNode((ObjectNode) fieldValue);
-            } else if (fieldValue.isArray()) {
-                fieldValue.forEach(arrayElement -> {
-                    if (arrayElement.isObject()) {
-                        maskObjectNode((ObjectNode) arrayElement);
+            if (childNode.isObject()) {
+                traverseAndMask((ObjectNode) childNode);
+            } else if (childNode.isArray()) {
+                childNode.forEach(element -> {
+                    if (element.isObject()) {
+                        traverseAndMask((ObjectNode) element);
                     }
                 });
             }
         });
     }
 
-    private String maskField(String fieldName, String value) {
-        String lowerFieldName = fieldName.toLowerCase();
-
-        if ("name".equals(lowerFieldName)) {
-            return maskName(value);
-        } else if ("phone".equals(lowerFieldName) || "phonenumber".equals(lowerFieldName) ||
-                "phone_number".equals(lowerFieldName)) {
-            return maskPhoneNumber(value);
-        } else if ("email".equals(lowerFieldName) || "emailaddress".equals(lowerFieldName) ||
-                "email_address".equals(lowerFieldName)) {
-            return maskEmail(value);
-        }
-
-        // Default masking strategy - keep first character
-        if (value.length() <= 1) {
-            return value;
-        }
-        return value.charAt(0) + MASK_CHARACTER.repeat(value.length() - 1);
+    private Optional<MaskingStrategy> findMaskingStrategy(String fieldName) {
+        return maskingStrategies.stream()
+                .filter(strategy -> strategy.canMask(fieldName))
+                .findFirst();
     }
 }

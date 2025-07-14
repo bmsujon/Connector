@@ -9,7 +9,7 @@ The Data Masking Extension is a configurable EDC extension that automatically ma
 - **Automatic masking** of sensitive fields in JSON data
 - **Configurable field selection** - choose which fields to mask
 - **Multiple masking strategies** for different data types
-- **Seamless integration** with EDC's transformation pipeline
+- **Seamless integration** with EDC's transformation pipeline, now supporting `InputStream`
 - **No performance impact** when disabled
 - **Extensive test coverage** with clear examples
 
@@ -46,11 +46,11 @@ edc.data.masking.enabled=true
 edc.data.masking.fields=name,phone,email,phoneNumber,customField
 ```
 
-If no specific fields are configured, the extension will mask these default fields:
+If no specific fields are configured, the extension will mask these default fields (case-insensitive):
 
 - `name`
-- `phone`, `phoneNumber`, `phone_number`
-- `email`, `emailAddress`, `email_address`
+- `phone`, `phonenumber`, `phone_number`
+- `email`, `emailaddress`, `email_address`
 
 ## Integration Guide
 

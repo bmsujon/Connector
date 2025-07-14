@@ -14,15 +14,20 @@
 
 package org.eclipse.edc.connector.datamasking;
 
+import org.eclipse.edc.connector.datamasking.DataMaskingServiceImpl;
+import org.eclipse.edc.connector.datamasking.DataMaskingTransformer;
+import org.eclipse.edc.connector.datamasking.rules.EmailMaskingStrategy;
+import org.eclipse.edc.connector.datamasking.rules.NameMaskingStrategy;
+import org.eclipse.edc.connector.datamasking.rules.PhoneNumberMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
-import org.eclipse.edc.runtime.metamodel.annotation.Configuration;
 import org.eclipse.edc.runtime.metamodel.annotation.Inject;
 import org.eclipse.edc.runtime.metamodel.annotation.Provider;
 import org.eclipse.edc.runtime.metamodel.annotation.Provides;
-import org.eclipse.edc.runtime.metamodel.annotation.Setting;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
+
+import java.util.List;
 
 /**
  * Extension that provides data masking capabilities for sensitive fields
@@ -34,17 +39,8 @@ public class DataMaskingExtension implements ServiceExtension {
 
     public static final String NAME = "Data Masking Extension";
 
-    @Configuration
-    private DataMaskingConfiguration configuration;
-
     @Inject
     private TypeTransformerRegistry transformerRegistry;
-
-    @Setting(key = "edc.data.masking.enabled", description = "Enable data masking functionality", defaultValue = "true")
-    private boolean maskingEnabled;
-
-    @Setting(key = "edc.data.masking.fields", description = "Comma-separated list of field names to mask", required = false)
-    private String fieldsToMask;
 
     @Override
     public String name() {
@@ -54,27 +50,32 @@ public class DataMaskingExtension implements ServiceExtension {
     @Override
     public void initialize(ServiceExtensionContext context) {
         var monitor = context.getMonitor();
+        var configuration = new DataMaskingConfiguration(context.getConfig());
 
         // Parse the fields to mask
         String[] fields = new String[0];
+        var fieldsToMask = configuration.getFieldsToMask();
         if (fieldsToMask != null && !fieldsToMask.trim().isEmpty()) {
             fields = fieldsToMask.split(",");
-            for (int i = 0; i < fields.length; i++) {
-                fields[i] = fields[i].trim().toLowerCase();
-            }
         }
 
-        var dataMaskingService = new DataMaskingServiceImpl(monitor, maskingEnabled, fields);
+        var strategies = List.of(
+                new NameMaskingStrategy(),
+                new EmailMaskingStrategy(),
+                new PhoneNumberMaskingStrategy()
+        );
+
+        var dataMaskingService = new DataMaskingServiceImpl(monitor, configuration.isMaskingEnabled(), fields, strategies);
         context.registerService(DataMaskingService.class, dataMaskingService);
 
         // Register the data masking transformer if masking is enabled
-        if (maskingEnabled) {
+        if (configuration.isMaskingEnabled()) {
             var transformer = new DataMaskingTransformer(dataMaskingService, monitor);
             transformerRegistry.register(transformer);
             monitor.info("Data Masking Transformer registered");
         }
 
-        monitor.info("Data Masking Extension initialized. Masking enabled: " + maskingEnabled +
+        monitor.info("Data Masking Extension initialized. Masking enabled: " + configuration.isMaskingEnabled() +
                 ", Fields: " + (fields.length > 0 ? String.join(", ", fields) : "default"));
     }
 

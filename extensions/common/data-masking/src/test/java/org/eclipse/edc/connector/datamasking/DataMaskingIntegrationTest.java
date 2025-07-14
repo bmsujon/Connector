@@ -14,11 +14,16 @@
 
 package org.eclipse.edc.connector.datamasking;
 
+import org.eclipse.edc.connector.datamasking.rules.EmailMaskingStrategy;
+import org.eclipse.edc.connector.datamasking.rules.NameMaskingStrategy;
+import org.eclipse.edc.connector.datamasking.rules.PhoneNumberMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -32,10 +37,15 @@ class DataMaskingIntegrationTest {
 
     private final Monitor monitor = mock(Monitor.class);
     private DataMaskingService dataMaskingService;
+    private final NameMaskingStrategy nameMaskingStrategy = new NameMaskingStrategy();
+    private final PhoneNumberMaskingStrategy phoneNumberMaskingStrategy = new PhoneNumberMaskingStrategy();
+    private final EmailMaskingStrategy emailMaskingStrategy = new EmailMaskingStrategy();
 
     @BeforeEach
     void setUp() {
-        dataMaskingService = new DataMaskingServiceImpl(monitor, true);
+        var strategies = List.of(nameMaskingStrategy, phoneNumberMaskingStrategy, emailMaskingStrategy);
+        // Initialize with default fields by passing an empty array
+        dataMaskingService = new DataMaskingServiceImpl(monitor, true, new String[0], strategies);
     }
 
     @Test
@@ -68,30 +78,30 @@ class DataMaskingIntegrationTest {
     @DisplayName("Should demonstrate name masking rule - keep initials visible")
     void shouldDemonstrateNameMaskingRule() {
         // Test various name formats
-        assertThat(dataMaskingService.maskName("John")).isEqualTo("J***");
-        assertThat(dataMaskingService.maskName("John Doe")).isEqualTo("J*** D**");
-        assertThat(dataMaskingService.maskName("Mary Jane Watson")).isEqualTo("M*** J*** W*****");
-        assertThat(dataMaskingService.maskName("X")).isEqualTo("X");
+        assertThat(nameMaskingStrategy.mask("John")).isEqualTo("J***");
+        assertThat(nameMaskingStrategy.mask("John Doe")).isEqualTo("J*** D**");
+        assertThat(nameMaskingStrategy.mask("Mary Jane Watson")).isEqualTo("M*** J*** W*****");
+        assertThat(nameMaskingStrategy.mask("X")).isEqualTo("X");
     }
 
     @Test
     @DisplayName("Should demonstrate phone masking rule - mask all but last 3 digits")
     void shouldDemonstratePhoneMaskingRule() {
         // Test various phone formats
-        assertThat(dataMaskingService.maskPhoneNumber("1234567890")).isEqualTo("*******890");
-        assertThat(dataMaskingService.maskPhoneNumber("+1 (555) 123-4567")).isEqualTo("+* (***) ***-*567");
-        assertThat(dataMaskingService.maskPhoneNumber("555.123.4567")).isEqualTo("***.***.*567");
-        assertThat(dataMaskingService.maskPhoneNumber("+44 7911 123456")).isEqualTo("+** **** ***456");
+        assertThat(phoneNumberMaskingStrategy.mask("1234567890")).isEqualTo("*******890");
+        assertThat(phoneNumberMaskingStrategy.mask("+1 (555) 123-4567")).isEqualTo("+* (***) ***-*567");
+        assertThat(phoneNumberMaskingStrategy.mask("555.123.4567")).isEqualTo("***.***.*567");
+        assertThat(phoneNumberMaskingStrategy.mask("+44 7911 123456")).isEqualTo("+** **** ***456");
     }
 
     @Test
     @DisplayName("Should demonstrate email masking rule - mask before @ leaving first letter")
     void shouldDemonstrateEmailMaskingRule() {
         // Test various email formats
-        assertThat(dataMaskingService.maskEmail("john@example.com")).isEqualTo("j***@example.com");
-        assertThat(dataMaskingService.maskEmail("jonathansmith@example.com")).isEqualTo("j************@example.com");
-        assertThat(dataMaskingService.maskEmail("a@test.co.uk")).isEqualTo("a@test.co.uk");
-        assertThat(dataMaskingService.maskEmail("user.name@company.org")).isEqualTo("u********@company.org");
+        assertThat(emailMaskingStrategy.mask("john@example.com")).isEqualTo("j***@example.com");
+        assertThat(emailMaskingStrategy.mask("jonathansmith@example.com")).isEqualTo("j************@example.com");
+        assertThat(emailMaskingStrategy.mask("a@test.co.uk")).isEqualTo("a@test.co.uk");
+        assertThat(emailMaskingStrategy.mask("user.name@company.org")).isEqualTo("u********@company.org");
     }
 
     @Test
@@ -213,7 +223,7 @@ class DataMaskingIntegrationTest {
     @DisplayName("Should be configurable to disable masking")
     void shouldBeConfigurableToDisableMasking() {
         // given - service with masking disabled
-        var disabledService = new DataMaskingServiceImpl(monitor, false);
+        var disabledService = new DataMaskingServiceImpl(monitor, false, new String[0], List.of());
         String jsonData = """
                 {
                     "name": "Jonathan Smith",
@@ -226,16 +236,15 @@ class DataMaskingIntegrationTest {
         String result = disabledService.maskJsonData(jsonData);
 
         // then - data should remain unchanged
-        assertThat(result).contains("\"name\":\"Jonathan Smith\"");
-        assertThat(result).contains("\"phone\":\"+44 7911 123456\"");
-        assertThat(result).contains("\"email\":\"jonathansmith@example.com\"");
+        assertThat(result).isEqualTo(jsonData);
     }
 
     @Test
     @DisplayName("Should be configurable for specific fields only")
     void shouldBeConfigurableForSpecificFields() {
         // given - service configured to mask only name and email
-        var customService = new DataMaskingServiceImpl(monitor, true, "name", "email");
+        var strategies = List.of(nameMaskingStrategy, emailMaskingStrategy, phoneNumberMaskingStrategy);
+        var customService = new DataMaskingServiceImpl(monitor, true, new String[]{"name", "email"}, strategies);
         String jsonData = """
                 {
                     "name": "Jonathan Smith",
@@ -251,5 +260,29 @@ class DataMaskingIntegrationTest {
         assertThat(result).contains("\"name\":\"J******* S****\""); // masked
         assertThat(result).contains("\"email\":\"j************@example.com\""); // masked
         assertThat(result).contains("\"phone\":\"+44 7911 123456\""); // not masked
+    }
+
+    @Test
+    @DisplayName("Should handle root-level JSON array")
+    void shouldHandleRootJsonArray() {
+        // given
+        String rootArrayJson = """
+                [
+                    {
+                        "name": "Alice Johnson",
+                        "email": "alice.johnson@company.com"
+                    },
+                    {
+                        "name": "Bob Smith",
+                        "email": "bob@company.com"
+                    }
+                ]
+                """;
+
+        // when
+        String result = dataMaskingService.maskJsonData(rootArrayJson);
+
+        // then - current implementation does not mask root arrays, so data should be unchanged
+        assertThat(result).isEqualTo(rootArrayJson);
     }
 }

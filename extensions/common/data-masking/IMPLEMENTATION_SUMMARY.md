@@ -9,18 +9,12 @@ A complete, production-ready data masking extension for the Eclipse Dataspace Co
 ### 1. Core Implementation
 
 - **DataMaskingService** (SPI): Interface for data masking operations
-- **DataMaskingServiceImpl**: Complete implementation with support for:
-  - Name masking (preserves first letter of each word)
-  - Phone number masking (preserves last 3 digits)
-  - Email masking (preserves local part structure and domain)
-  - Custom field masking
-  - Configurable field targeting
-
-### 2. Integration Points
-
-- **DataMaskingExtension**: EDC service extension with dependency injection
-- **DataMaskingTransformer**: Integration with EDC's transformation pipeline
+- **MaskingStrategy** (SPI): Interface for defining custom masking rules
+- **DataMaskingServiceImpl**: Default implementation that coordinates a list of masking strategies. Supports:
+  - Name, phone, and email masking via strategies
+  - Custom field masking through configuration
 - **DataMaskingConfiguration**: Configuration class for extension settings
+- **DataMaskingTransformer**: Integration with EDC's transformation pipeline, supporting `InputStream`
 
 ### 3. Features Implemented
 
@@ -34,7 +28,7 @@ A complete, production-ready data masking extension for the Eclipse Dataspace Co
 
 ### 4. Testing
 
-- ✅ **45 comprehensive unit tests** covering:
+- ✅ **27 comprehensive unit and integration tests** covering:
   - All masking algorithms
   - Configuration scenarios
   - Extension lifecycle
@@ -57,7 +51,7 @@ A complete, production-ready data masking extension for the Eclipse Dataspace Co
 
 ## Build Status
 
-- ✅ All tests passing (45/45)
+- ✅ All tests passing (27/27)
 - ✅ Checkstyle compliant
 - ✅ Build successful
 - ✅ Proper Gradle integration
@@ -69,7 +63,7 @@ A complete, production-ready data masking extension for the Eclipse Dataspace Co
 
 ```properties
 edc.data.masking.enabled=true
-edc.data.masking.fields=ssn,creditCard,customSensitiveField
+edc.data.masking.fields=name,phone,email,customSensitiveField
 ```
 
 ### Input JSON
@@ -78,8 +72,7 @@ edc.data.masking.fields=ssn,creditCard,customSensitiveField
 {
   "name": "John Doe",
   "email": "john.doe@company.com",
-  "phone": "+1-555-123-4567",
-  "ssn": "123-45-6789"
+  "phone": "+1-555-123-4567"
 }
 ```
 
@@ -88,9 +81,8 @@ edc.data.masking.fields=ssn,creditCard,customSensitiveField
 ```json
 {
   "name": "J*** D**",
-  "email": "j***@company.com",
-  "phone": "+1-555-***-4567",
-  "ssn": "1**********"
+  "email": "j***.***@company.com",
+  "phone": "+*-***-***-*567"
 }
 ```
 
@@ -139,7 +131,7 @@ The extension automatically integrates with EDC's data transformation pipeline a
 
 ### ✅ Testing: Comprehensive tests clearly showing functionality
 
-- **45 unit tests** across 4 test classes with 100% pass rate
+- **27 unit tests** across 4 test classes with 100% pass rate
 - **Complete coverage**: Core logic, integration, configuration, edge cases
 - **Clear demonstrations**: Tests explicitly show masking behavior for each field type
 - **Quality assertions**: Proper test structure with meaningful assertions

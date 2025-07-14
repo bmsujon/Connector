@@ -20,10 +20,15 @@ import org.eclipse.edc.transform.spi.TransformerContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
+
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -31,7 +36,7 @@ class DataMaskingTransformerTest {
 
     private final DataMaskingService dataMaskingService = mock(DataMaskingService.class);
     private final Monitor monitor = mock(Monitor.class);
-    private final TransformerContext transformerContext = mock(TransformerContext.class);
+    private final TransformerContext context = mock(TransformerContext.class);
     private DataMaskingTransformer transformer;
 
     @BeforeEach
@@ -40,174 +45,49 @@ class DataMaskingTransformerTest {
     }
 
     @Test
-    void shouldReturnCorrectTypes() {
-        assertThat(transformer.getInputType()).isEqualTo(String.class);
-        assertThat(transformer.getOutputType()).isEqualTo(String.class);
+    void shouldMaskData() throws IOException {
+        var jsonData = "{\"name\": \"John Doe\"}";
+        var inputStream = new ByteArrayInputStream(jsonData.getBytes(StandardCharsets.UTF_8));
+        when(dataMaskingService.maskJsonData(anyString())).thenReturn("{\"name\": \"J*** D**\"}");
+
+        var resultStream = transformer.transform(inputStream, context);
+
+        assertThat(resultStream).isNotNull();
+        var resultString = new String(resultStream.readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(resultString).isEqualTo("{\"name\": \"J*** D**\"}");
     }
 
     @Test
-    void shouldTransformJsonWithSensitiveFields() {
-        // given
-        String input = """
-                {
-                    "name": "Jonathan Smith",
-                    "phone": "+44 7911 123456",
-                    "email": "jonathansmith@example.com"
-                }
-                """;
-        String expectedOutput = """
-                {
-                    "name": "J******* S****",
-                    "phone": "+** **** ***456",
-                    "email": "j************@example.com"
-                }
-                """;
+    void shouldReturnNullOnTransformFailure() {
+        var jsonData = "{\"name\": \"John Doe\"}";
+        var inputStream = new ByteArrayInputStream(jsonData.getBytes(StandardCharsets.UTF_8));
+        when(dataMaskingService.maskJsonData(anyString())).thenThrow(new RuntimeException("Test Exception"));
 
-        when(dataMaskingService.maskJsonData(input)).thenReturn(expectedOutput);
+        var resultStream = transformer.transform(inputStream, context);
 
-        // when
-        String result = transformer.transform(input, transformerContext);
-
-        // then
-        assertThat(result).isEqualTo(expectedOutput);
-        verify(dataMaskingService).maskJsonData(input);
+        assertThat(resultStream).isNull();
     }
 
     @Test
-    void shouldNotTransformNonJsonData() {
-        // given
-        String input = "This is just plain text";
+    void shouldReturnNullOnIOException() throws IOException {
+        var inputStream = mock(InputStream.class);
+        when(inputStream.transferTo(any())).thenThrow(new IOException("Test IO Exception"));
 
-        // when
-        String result = transformer.transform(input, transformerContext);
+        var resultStream = transformer.transform(inputStream, context);
 
-        // then
-        assertThat(result).isEqualTo(input);
-        verify(dataMaskingService, never()).maskJsonData(anyString());
+        assertThat(resultStream).isNull();
+        verify(context).reportProblem(anyString());
     }
 
     @Test
-    void shouldNotTransformJsonWithoutSensitiveFields() {
-        // given
-        String input = """
-                {
-                    "id": 123,
-                    "status": "active",
-                    "count": 42
-                }
-                """;
+    void shouldHandleEmptyInputStream() throws IOException {
+        var inputStream = new ByteArrayInputStream(new byte[0]);
+        when(dataMaskingService.maskJsonData("")).thenReturn("");
 
-        // when
-        String result = transformer.transform(input, transformerContext);
+        var resultStream = transformer.transform(inputStream, context);
 
-        // then
-        assertThat(result).isEqualTo(input);
-        verify(dataMaskingService, never()).maskJsonData(anyString());
-    }
-
-    @Test
-    void shouldTransformJsonArrayWithSensitiveFields() {
-        // given
-        String input = """
-                [
-                    {
-                        "name": "John Doe",
-                        "email": "john@example.com"
-                    }
-                ]
-                """;
-        String expectedOutput = """
-                [
-                    {
-                        "name": "J*** D**",
-                        "email": "j***@example.com"
-                    }
-                ]
-                """;
-
-        when(dataMaskingService.maskJsonData(input)).thenReturn(expectedOutput);
-
-        // when
-        String result = transformer.transform(input, transformerContext);
-
-        // then
-        assertThat(result).isEqualTo(expectedOutput);
-        verify(dataMaskingService).maskJsonData(input);
-    }
-
-    @Test
-    void shouldHandleNullInput() {
-        // when
-        String result = transformer.transform(null, transformerContext);
-
-        // then
-        assertThat(result).isNull();
-        verify(dataMaskingService, never()).maskJsonData(anyString());
-    }
-
-    @Test
-    void shouldHandleEmptyInput() {
-        // when
-        String result = transformer.transform("", transformerContext);
-
-        // then
-        assertThat(result).isEqualTo("");
-        verify(dataMaskingService, never()).maskJsonData(anyString());
-    }
-
-    @Test
-    void shouldHandleExceptionGracefully() {
-        // given
-        String input = """
-                {
-                    "name": "John Doe",
-                    "email": "john@example.com"
-                }
-                """;
-
-        when(dataMaskingService.maskJsonData(input)).thenThrow(new RuntimeException("Masking error"));
-
-        // when
-        String result = transformer.transform(input, transformerContext);
-
-        // then
-        assertThat(result).isEqualTo(input);
-        verify(transformerContext).reportProblem("Data masking failed: Masking error");
-    }
-
-    @Test
-    void shouldDetectVariousFieldNameFormats() {
-        // Test different field name formats that should trigger masking
-        String[] inputs = {
-                """
-                        { "name": "John" }
-                        """,
-                """
-                        { "phone": "123456" }
-                        """,
-                """
-                        { "email": "test@example.com" }
-                        """,
-                """
-                        { "phoneNumber": "123456" }
-                        """,
-                """
-                        { "phone_number": "123456" }
-                        """,
-                """
-                        { "emailAddress": "test@example.com" }
-                        """,
-                """
-                        { "email_address": "test@example.com" }
-                        """
-        };
-
-        for (String input : inputs) {
-            when(dataMaskingService.maskJsonData(input)).thenReturn(input);
-
-            String result = transformer.transform(input, transformerContext);
-
-            verify(dataMaskingService).maskJsonData(input);
-        }
+        assertThat(resultStream).isNotNull();
+        var resultString = new String(resultStream.readAllBytes(), StandardCharsets.UTF_8);
+        assertThat(resultString).isEmpty();
     }
 }
