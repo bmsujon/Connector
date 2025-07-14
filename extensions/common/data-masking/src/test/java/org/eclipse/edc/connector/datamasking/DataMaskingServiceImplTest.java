@@ -34,12 +34,10 @@ class DataMaskingServiceImplTest {
 
     @BeforeEach
     void setUp() {
-        var strategies = List.of(
-                new NameMaskingStrategy(),
-                new EmailMaskingStrategy(),
-                new PhoneNumberMaskingStrategy()
-        );
-        dataMaskingService = new DataMaskingServiceImpl(monitor, true, new String[]{"name", "email", "phone"}, strategies);
+        dataMaskingService = new DataMaskingServiceImpl(monitor, true, new String[]{"name", "email", "phone"});
+        dataMaskingService.register(new NameMaskingStrategy());
+        dataMaskingService.register(new EmailMaskingStrategy());
+        dataMaskingService.register(new PhoneNumberMaskingStrategy());
     }
 
     @Test
@@ -72,8 +70,8 @@ class DataMaskingServiceImplTest {
 
     @Test
     void shouldReturnOriginalDataWhenMaskingIsDisabled() {
-        List<MaskingStrategy> strategies = List.of(new NameMaskingStrategy());
-        var disabledService = new DataMaskingServiceImpl(monitor, false, new String[]{"name"}, strategies);
+        var disabledService = new DataMaskingServiceImpl(monitor, false, new String[]{"name"});
+        disabledService.register(new NameMaskingStrategy());
         var jsonData = "{\"name\":\"John Smith\"}";
         var result = disabledService.maskJsonData(jsonData);
         assertThat(result).isEqualTo(jsonData);

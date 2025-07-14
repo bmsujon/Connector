@@ -21,6 +21,7 @@ import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
 import org.eclipse.edc.connector.datamasking.spi.MaskingStrategy;
 import org.eclipse.edc.spi.monitor.Monitor;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
@@ -40,12 +41,11 @@ public class DataMaskingServiceImpl implements DataMaskingService {
     private final boolean maskingEnabled;
     private final Set<String> fieldsToMask;
     private final ObjectMapper objectMapper = new ObjectMapper();
-    private final List<MaskingStrategy> maskingStrategies;
+    private final List<MaskingStrategy> maskingStrategies = new ArrayList<>();
 
-    public DataMaskingServiceImpl(Monitor monitor, boolean maskingEnabled, String[] fieldsToMask, List<MaskingStrategy> maskingStrategies) {
+    public DataMaskingServiceImpl(Monitor monitor, boolean maskingEnabled, String[] fieldsToMask) {
         this.monitor = monitor;
         this.maskingEnabled = maskingEnabled;
-        this.maskingStrategies = maskingStrategies;
         var fieldsToMaskSet = new HashSet<String>();
         if (fieldsToMask != null && fieldsToMask.length > 0) {
             for (String field : fieldsToMask) {
@@ -55,6 +55,11 @@ public class DataMaskingServiceImpl implements DataMaskingService {
         } else {
             this.fieldsToMask = DEFAULT_FIELDS_TO_MASK;
         }
+    }
+
+    @Override
+    public void register(MaskingStrategy strategy) {
+        maskingStrategies.add(strategy);
     }
 
     @Override

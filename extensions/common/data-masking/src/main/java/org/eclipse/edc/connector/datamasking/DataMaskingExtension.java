@@ -59,14 +59,13 @@ public class DataMaskingExtension implements ServiceExtension {
             fields = fieldsToMask.split(",");
         }
 
-        var strategies = List.of(
-                new NameMaskingStrategy(),
-                new EmailMaskingStrategy(),
-                new PhoneNumberMaskingStrategy()
-        );
-
-        var dataMaskingService = new DataMaskingServiceImpl(monitor, configuration.isMaskingEnabled(), fields, strategies);
+        var dataMaskingService = new DataMaskingServiceImpl(monitor, configuration.isMaskingEnabled(), fields);
         context.registerService(DataMaskingService.class, dataMaskingService);
+
+        // Register default strategies
+        dataMaskingService.register(new NameMaskingStrategy());
+        dataMaskingService.register(new EmailMaskingStrategy());
+        dataMaskingService.register(new PhoneNumberMaskingStrategy());
 
         // Register the data masking transformer if masking is enabled
         if (configuration.isMaskingEnabled()) {

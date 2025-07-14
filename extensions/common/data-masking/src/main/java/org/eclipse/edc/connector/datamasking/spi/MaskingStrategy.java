@@ -14,9 +14,12 @@
 
 package org.eclipse.edc.connector.datamasking.spi;
 
+import org.eclipse.edc.runtime.metamodel.annotation.ExtensionPoint;
+
 /**
  * Defines a strategy for masking a specific type of data.
  */
+@ExtensionPoint
 public interface MaskingStrategy {
 
     /**
@@ -35,4 +38,3 @@ public interface MaskingStrategy {
      */
     String mask(String value);
 }
-

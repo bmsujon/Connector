@@ -113,21 +113,24 @@ java -jar build/libs/your-connector.jar
 }
 ```
 
-### Complex Nested Structures
+### Masking Nested JSON
+
+The extension correctly traverses nested JSON objects and arrays.
 
 **Input:**
 
 ```json
 {
-  "users": [
-    {
+  "user": {
+    "details": {
       "name": "Alice Johnson",
       "contact": {
-        "email": "alice@company.com",
+        "email": "alice.johnson@company.com",
         "phone": "555-123-4567"
       }
-    }
-  ]
+    },
+    "department": "Engineering"
+  }
 }
 ```
 
@@ -135,15 +138,16 @@ java -jar build/libs/your-connector.jar
 
 ```json
 {
-  "users": [
-    {
+  "user": {
+    "details": {
       "name": "A**** J******",
       "contact": {
-        "email": "a****@company.com",
+        "email": "a************@company.com",
         "phone": "***-***-*567"
       }
-    }
-  ]
+    },
+    "department": "Engineering"
+  }
 }
 ```
 

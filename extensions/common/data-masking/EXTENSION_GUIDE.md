@@ -4,9 +4,11 @@ This guide demonstrates how to extend the Data Masking Extension to support new 
 
 ## Overview
 
-The Data Masking Extension is designed with extensibility in mind, following the Strategy Pattern. Adding a new masking rule is a straightforward process that involves creating a new `MaskingStrategy` implementation and registering it with the extension.
+The Data Masking Extension is designed with extensibility in mind. It uses a registry pattern where the `DataMaskingService` acts as a registry for different `MaskingStrategy` implementations. To add a new masking rule, you simply need to create your own `MaskingStrategy` and register it with the service.
 
-## Step 1: Create a New MaskingStrategy Implementation
+This is typically done by creating a separate EDC extension that depends on the `data-masking` extension.
+
+## Step 1: Create a New `MaskingStrategy` Implementation
 
 First, create a new Java class that implements the `org.eclipse.edc.connector.datamasking.spi.MaskingStrategy` interface. This interface has two methods:
 
@@ -18,7 +20,7 @@ First, create a new Java class that implements the `org.eclipse.edc.connector.da
 Let's create a strategy to mask credit card numbers, leaving only the last four digits visible.
 
 ```java
-package org.eclipse.edc.connector.datamasking.rules;
+package com.example.edc.extension.masking;
 
 import org.eclipse.edc.connector.datamasking.spi.MaskingStrategy;
 
@@ -51,43 +53,90 @@ public class CreditCardMaskingStrategy implements MaskingStrategy {
 }
 ```
 
-## Step 2: Register the New Strategy
+## Step 2: Create a New Extension to Register the Strategy
 
-Next, open the `DataMaskingExtension.java` file and add your new strategy to the list of strategies that are passed to the `DataMaskingServiceImpl`.
+Create a new EDC `ServiceExtension` that will register your custom strategy. This extension will get the `DataMaskingService` from the context and use its `register` method.
 
 ```java
-// File: DataMaskingExtension.java
+package com.example.edc.extension.masking;
 
-// ... imports
-import org.eclipse.edc.connector.datamasking.rules.CreditCardMaskingStrategy; // Import your new strategy
+import org.eclipse.edc.connector.datamasking.spi.DataMaskingService;
+import org.eclipse.edc.runtime.metamodel.annotation.Inject;
+import org.eclipse.edc.spi.system.ServiceExtension;
+import org.eclipse.edc.spi.system.ServiceExtensionContext;
 
-// ... class definition
+public class CustomMaskingExtension implements ServiceExtension {
+
+    @Inject
+    private DataMaskingService dataMaskingService;
 
     @Override
     public void initialize(ServiceExtensionContext context) {
-        // ... existing code
-
-        var strategies = List.of(
-                new NameMaskingStrategy(),
-                new EmailMaskingStrategy(),
-                new PhoneNumberMaskingStrategy(),
-                new CreditCardMaskingStrategy() // Add your new strategy to the list
-        );
-
-        var dataMaskingService = new DataMaskingServiceImpl(monitor, configuration.isMaskingEnabled(), fields, strategies);
-        // ... existing code
+        dataMaskingService.register(new CreditCardMaskingStrategy());
     }
+}
 ```
 
-## Step 3: Configure the New Field (Optional)
+## Step 3: Register the Custom Extension as a Service
 
-If you want to mask a field that is not covered by the default field names, add it to your configuration file.
+For the EDC runtime to discover your new `CustomMaskingExtension`, you must create a service provider configuration file.
+
+1.  In your custom extension's resources directory, create the following folder structure: `src/main/resources/META-INF/services`.
+2.  Inside the `services` directory, create a file named `org.eclipse.edc.spi.system.ServiceExtension`.
+3.  Add the fully qualified name of your new extension class to this file:
+
+    ```
+    com.example.edc.extension.masking.CustomMaskingExtension
+    ```
+
+This file tells the Java ServiceLoader that your class is an available `ServiceExtension`, allowing the EDC runtime to load and initialize it.
+
+## Step 4: Include Your New Extension in the Runtime
+
+Finally, add your new extension module as a dependency to your EDC runtime launcher. This will ensure that your custom extension is loaded and the new masking strategy is registered with the `DataMaskingService`.
+
+```kotlin
+// In your launcher's build.gradle.kts
+dependencies {
+    // ... other dependencies
+    implementation(project(":extensions:common:data-masking"))
+    implementation(project(":extensions:custom:custom-masking-extension")) // Your new extension
+}
+```
+
+## Step 5: Configure the New Field (Optional)
+
+If you want to mask a field that is not covered by the default field names, add it to your `config.properties` file.
 
 ```properties
 # config.properties
 edc.data.masking.fields=name,phone,email,creditCard,cc_number
 ```
 
-If your `canMask` method is robust enough (like the example above), you may not need to explicitly configure every field name. The default field list will catch common variations, but this provides an override.
+## Step 6: Test Your New Strategy (Recommended)
 
-That's it! Your new masking rule is now integrated into the data masking extension and will be automatically applied during data transfers.
+It is highly recommended to write unit tests for your new `MaskingStrategy` to ensure it behaves as expected.
+
+### Example: `CreditCardMaskingStrategyTest.java`
+
+```java
+import org.junit.jupiter.api.Test;
+import static org.assertj.core.api.Assertions.assertThat;
+
+class CreditCardMaskingStrategyTest {
+
+    private final CreditCardMaskingStrategy strategy = new CreditCardMaskingStrategy();
+
+    @Test
+    void shouldMaskCreditCardNumber() {
+        assertThat(strategy.mask("4111-1111-1111-1111")).isEqualTo("****-****-****-1111");
+    }
+
+    @Test
+    void shouldNotMaskShortValues() {
+        assertThat(strategy.mask("1234")).isEqualTo("1234");
+    }
+}
+```
+
+That's it! Your new masking rule is now fully integrated into the data masking extension and will be automatically applied during data transfers.

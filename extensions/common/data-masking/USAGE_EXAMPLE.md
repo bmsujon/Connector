@@ -48,7 +48,8 @@ edc.runtime.id=my-connector-runtime
 
 # Data Masking Configuration
 edc.data.masking.enabled=true
-edc.data.masking.fields=name,phone,email,ssn,personalId
+# By default (if edc.data.masking.fields is not set), the extension masks:
+# name, phone, phonenumber, phone_number, email, emailaddress, email_address
 
 # Web server configuration
 web.http.port=8181
@@ -59,10 +60,10 @@ web.http.path=/api
 
 ## Runtime Behavior
 
-When the connector starts, you'll see in the logs:
+When the connector starts with the default configuration, you'll see in the logs:
 
 ```
-INFO Data Masking Extension initialized. Masking enabled: true, Fields: name, phone, email, ssn, personalId
+INFO Data Masking Extension initialized. Masking enabled: true, Fields: default
 INFO Data Masking Transformer registered
 ```
 
@@ -78,7 +79,6 @@ When data flows through your connector, sensitive fields will be automatically m
     "name": "John Doe",
     "phone": "+1-555-123-4567",
     "email": "john.doe@company.com",
-    "ssn": "123-45-6789",
     "address": "123 Main St"
   }
 }
@@ -92,7 +92,6 @@ When data flows through your connector, sensitive fields will be automatically m
     "name": "J*** D**",
     "phone": "+*-***-***-*567",
     "email": "j*******@company.com",
-    "ssn": "***-**-*789",
     "address": "123 Main St"
   }
 }

@@ -21,6 +21,7 @@ import org.eclipse.edc.spi.system.configuration.Config;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -61,22 +62,29 @@ class DataMaskingExtensionTest {
     void shouldInitializeWithDefaultSettings() {
         when(config.getBoolean("edc.data.masking.enabled", true)).thenReturn(true);
         when(config.getString("edc.data.masking.fields", null)).thenReturn(null);
+        var serviceCaptor = ArgumentCaptor.forClass(DataMaskingService.class);
 
         extension.initialize(context);
 
-        verify(context).registerService(eq(DataMaskingService.class), any(DataMaskingServiceImpl.class));
+        verify(context).registerService(eq(DataMaskingService.class), serviceCaptor.capture());
         verify(transformerRegistry).register(any(DataMaskingTransformer.class));
+
+        var service = serviceCaptor.getValue();
+        assertThat(service).isInstanceOf(DataMaskingServiceImpl.class);
+        // Further tests could verify the registered strategies if needed
     }
 
     @Test
     void shouldInitializeWithCustomFields() {
         when(config.getBoolean("edc.data.masking.enabled", true)).thenReturn(true);
         when(config.getString("edc.data.masking.fields", null)).thenReturn("name,custom");
+        var serviceCaptor = ArgumentCaptor.forClass(DataMaskingService.class);
 
         extension.initialize(context);
 
-        verify(context).registerService(eq(DataMaskingService.class), any(DataMaskingServiceImpl.class));
+        verify(context).registerService(eq(DataMaskingService.class), serviceCaptor.capture());
         verify(transformerRegistry).register(any(DataMaskingTransformer.class));
+        assertThat(serviceCaptor.getValue()).isNotNull();
     }
 
     @Test
@@ -93,10 +101,12 @@ class DataMaskingExtensionTest {
     void shouldInitializeWithEmptyFields() {
         when(config.getBoolean("edc.data.masking.enabled", true)).thenReturn(true);
         when(config.getString("edc.data.masking.fields", null)).thenReturn("");
+        var serviceCaptor = ArgumentCaptor.forClass(DataMaskingService.class);
 
         extension.initialize(context);
 
-        verify(context).registerService(eq(DataMaskingService.class), any(DataMaskingServiceImpl.class));
+        verify(context).registerService(eq(DataMaskingService.class), serviceCaptor.capture());
         verify(transformerRegistry).register(any(DataMaskingTransformer.class));
+        assertThat(serviceCaptor.getValue()).isNotNull();
     }
 }

@@ -36,16 +36,18 @@ import static org.mockito.Mockito.mock;
 class DataMaskingIntegrationTest {
 
     private final Monitor monitor = mock(Monitor.class);
-    private DataMaskingService dataMaskingService;
+    private DataMaskingServiceImpl dataMaskingService;
     private final NameMaskingStrategy nameMaskingStrategy = new NameMaskingStrategy();
     private final PhoneNumberMaskingStrategy phoneNumberMaskingStrategy = new PhoneNumberMaskingStrategy();
     private final EmailMaskingStrategy emailMaskingStrategy = new EmailMaskingStrategy();
 
     @BeforeEach
     void setUp() {
-        var strategies = List.of(nameMaskingStrategy, phoneNumberMaskingStrategy, emailMaskingStrategy);
         // Initialize with default fields by passing an empty array
-        dataMaskingService = new DataMaskingServiceImpl(monitor, true, new String[0], strategies);
+        dataMaskingService = new DataMaskingServiceImpl(monitor, true, new String[0]);
+        dataMaskingService.register(nameMaskingStrategy);
+        dataMaskingService.register(phoneNumberMaskingStrategy);
+        dataMaskingService.register(emailMaskingStrategy);
     }
 
     @Test
@@ -223,7 +225,7 @@ class DataMaskingIntegrationTest {
     @DisplayName("Should be configurable to disable masking")
     void shouldBeConfigurableToDisableMasking() {
         // given - service with masking disabled
-        var disabledService = new DataMaskingServiceImpl(monitor, false, new String[0], List.of());
+        var disabledService = new DataMaskingServiceImpl(monitor, false, new String[0]);
         String jsonData = """
                 {
                     "name": "Jonathan Smith",
@@ -243,8 +245,10 @@ class DataMaskingIntegrationTest {
     @DisplayName("Should be configurable for specific fields only")
     void shouldBeConfigurableForSpecificFields() {
         // given - service configured to mask only name and email
-        var strategies = List.of(nameMaskingStrategy, emailMaskingStrategy, phoneNumberMaskingStrategy);
-        var customService = new DataMaskingServiceImpl(monitor, true, new String[]{"name", "email"}, strategies);
+        var customService = new DataMaskingServiceImpl(monitor, true, new String[]{"name", "email"});
+        customService.register(nameMaskingStrategy);
+        customService.register(emailMaskingStrategy);
+        customService.register(phoneNumberMaskingStrategy);
         String jsonData = """
                 {
                     "name": "Jonathan Smith",
