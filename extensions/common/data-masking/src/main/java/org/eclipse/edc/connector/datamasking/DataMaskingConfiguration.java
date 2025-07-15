@@ -14,7 +14,6 @@
 
 package org.eclipse.edc.connector.datamasking;
 
-import org.eclipse.edc.runtime.metamodel.annotation.Setting;
 import org.eclipse.edc.spi.system.configuration.Config;
 
 /**

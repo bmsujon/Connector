@@ -69,7 +69,7 @@ class DataMaskingTransformerTest {
     }
 
     @Test
-    void shouldReturnNullOnIOException() throws IOException {
+    void shouldReturnNullOnIoException() throws IOException {
         var inputStream = mock(InputStream.class);
         when(inputStream.transferTo(any())).thenThrow(new IOException("Test IO Exception"));
 
