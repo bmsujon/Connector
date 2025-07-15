@@ -14,8 +14,6 @@
 
 package org.eclipse.edc.connector.datamasking;
 
-import org.eclipse.edc.connector.datamasking.DataMaskingServiceImpl;
-import org.eclipse.edc.connector.datamasking.DataMaskingTransformer;
 import org.eclipse.edc.connector.datamasking.rules.EmailMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.rules.NameMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.rules.PhoneNumberMaskingStrategy;
@@ -26,8 +24,6 @@ import org.eclipse.edc.runtime.metamodel.annotation.Provides;
 import org.eclipse.edc.spi.system.ServiceExtension;
 import org.eclipse.edc.spi.system.ServiceExtensionContext;
 import org.eclipse.edc.transform.spi.TypeTransformerRegistry;
-
-import java.util.List;
 
 /**
  * Extension that provides data masking capabilities for sensitive fields

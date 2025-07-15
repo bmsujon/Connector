@@ -17,12 +17,9 @@ package org.eclipse.edc.connector.datamasking;
 import org.eclipse.edc.connector.datamasking.rules.EmailMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.rules.NameMaskingStrategy;
 import org.eclipse.edc.connector.datamasking.rules.PhoneNumberMaskingStrategy;
-import org.eclipse.edc.connector.datamasking.spi.MaskingStrategy;
 import org.eclipse.edc.spi.monitor.Monitor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
